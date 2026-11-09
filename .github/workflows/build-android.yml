@@ -1,0 +1,49 @@
+name: Build Stickman World APK
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v3
+      - name: Install Android SDK
+        run: sdkmanager "platform-tools" "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.14206865"
+      - name: Download Panda3D Android wheels
+        run: |
+          mkdir -p wheels
+          curl -L --fail -o wheels/panda3d-android-arm64.whl https://rdb.name/panda3d-1.11.0-cp313-cp313-android_arm64.whl
+          curl -L --fail -o wheels/panda3d-android-armv7a.whl https://rdb.name/panda3d-1.11.0-cp313-cp313-android_armv7a.whl
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          python -m pip install --pre --extra-index-url https://archive.panda3d.org/ panda3d
+          python -m pip install -r requirements.txt
+      - name: Build Android App Bundle
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
+        run: python setup.py bdist_apps
+      - name: Convert AAB to universal APK
+        run: |
+          AAB=$(find dist -name "*.aab" -print -quit)
+          test -n "$AAB"
+          curl -L --fail -o bundletool.jar https://github.com/google/bundletool/releases/download/1.18.2/bundletool-all-1.18.2.jar
+          keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          java -jar bundletool.jar build-apks --bundle="$AAB" --output=stickman.apks --mode=universal --ks=debug.keystore --ks-pass=pass:android --ks-key-alias=androiddebugkey --key-pass=pass:android
+          unzip -o stickman.apks universal.apk -d apk-output
+          mkdir -p build
+          cp apk-output/universal.apk build/StickmanWorld.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StickmanWorld-APK
+          path: build/StickmanWorld.apk
+          if-no-files-found: error
