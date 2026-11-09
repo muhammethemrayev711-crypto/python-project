@@ -1,0 +1,1 @@
+Python + Panda3D 3D prototype. See README.md for current scope and limitations.\n
